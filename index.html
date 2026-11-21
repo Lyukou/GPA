@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>家庭积分系统</title>
+    <style>
+        :root { --primary: #007aff; --success: #34c759; --danger: #ff3b30; --gray: #8e8e93; --bg: #f0f2f5; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); padding: 15px; margin: 0; -webkit-tap-highlight-color: transparent; }
+        .page { display: none; max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        h1, h2, h3 { text-align: center; color: #333; margin-top: 0; }
+        
+        button { padding: 12px 20px; font-size: 16px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        button:active { opacity: 0.7; }
+        button:disabled { background: #ddd !important; color: #999 !important; cursor: not-allowed; }
+        
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-gray { background: var(--gray); color: white; }
+
+        .btn-group { display: flex; flex-direction: column; gap: 15px; margin-top: 40px; }
+        .btn-group button { padding: 20px; font-size: 20px; }
+
+        .score-header { display: flex; justify-content: space-around; font-size: 20px; font-weight: bold; margin-bottom: 20px; background: #e5f1ff; padding: 15px; border-radius: 12px; color: #0056b3; }
+        .category-title { margin: 25px 0 10px; color: #666; font-size: 16px; border-left: 4px solid var(--primary); padding-left: 10px; }
+        
+        .task-card { border: 1px solid #eee; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; background: #fafafa; flex-wrap: wrap; gap: 10px; }
+        .task-info { flex: 1; min-width: 150px; }
+        .task-name { font-size: 18px; font-weight: bold; color: #333; }
+        .task-desc { font-size: 13px; color: #888; margin-top: 4px; }
+        .action-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .action-btns button { padding: 10px 15px; font-size: 15px; }
+        
+        .sys-select, .jump-input { padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; background: #fff; }
+        .jump-input { width: 90px; text-align: center; }
+
+        .checkbox-group { display: flex; gap: 10px; align-items: center; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; }
+        .checkbox-group label { font-size: 15px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        .checkbox-group input[type="checkbox"] { width: 18px; height: 18px; }
+
+        .parent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .kid-stats { border: 1px solid #ddd; padding: 15px; border-radius: 12px; background: #fff; }
+        .kid-stats h3 { margin-bottom: 10px; color: var(--primary); }
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; }
+        .stat-val { font-weight: bold; color: #d32f2f; }
+        
+        .history-log { max-height: 300px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 10px; border: 1px solid #eee; font-size: 14px; }
+        .log-item { padding: 8px 0; border-bottom: 1px dashed #ddd; display: flex; justify-content: space-between; }
+        .log-item:last-child { border-bottom: none; }
+        
+        .exchange-area { display: flex; gap: 10px; align-items: center; margin: 15px 0; background: #fff3e0; padding: 15px; border-radius: 10px; }
+        .exchange-area input { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; width: 80px; text-align: center; }
+
+        .backup-area { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        .backup-area textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 入口登录页 -->
+    <div id="login-page" class="page active">
+        <h1>🏠 家庭积分系统</h1>
+        <p style="text-align:center; color:#888;">请选择身份进入</p>
+        <div class="btn-group">
+            <button class="btn-primary" onclick="login('chen_he')">👦 陈和 进入</button>
+            <button class="btn-primary" onclick="login('chen_qiao')">👦 陈翘 进入</button>
+            <button class="btn-gray" style="margin-top:20px;" onclick="login('parent')">👨 家长管理端 (需密码)</button>
+        </div>
+    </div>
+
+    <!-- 2. 孩子打卡页 -->
+    <div id="kid-page" class="page">
+        <h2 id="kid-name-title"></h2>
+        <div class="score-header">
+            <span>今日: <span id="k-today">0</span>分</span>
+            <span>总分: <span id="k-total">0</span>分</span>
+        </div>
+        <div id="task-container"></div>
+        <button class="btn-gray" style="width:100%; margin-top:30px; padding:15px;" onclick="switchPage('login-page')">退出返回</button>
+    </div>
+
+    <!-- 3. 家长端页面 -->
+    <div id="parent-page" class="page">
+        <h2>👨 家长管理端</h2>
+        <button class="btn-gray" style="width:100%; margin-bottom:15px;" onclick="switchPage('login-page')">退出返回</button>
+        
+        <div class="parent-grid">
+            <div class="kid-stats">
+                <h3>陈和 (初中)</h3>
+                <div class="stat-row"><span>总分:</span> <span class="stat-val" id="p-he-total">0</span></div>
+                <div class="stat-row"><span>本周合计:</span> <span id="p-he-week">0</span></div>
+                <div style="margin-top:10px; display:flex; gap:5px; flex-wrap:wrap;">
+                    <button class="btn-primary" style="font-size:12px; padding:8px;" onclick="parentDailyScore('chen_he')">+ 每日评分</button>
+                    <button class="btn-success" style="font-size:12px; padding:8px;" onclick="showHistory('chen_he')">看记录</button>
+                </div>
+            </div>
+            <div class="kid-stats">
+                <h3>陈翘 (小学)</h3>
+                <div class="stat-row"><span>总分:</span> <span class="stat-val" id="p-qiao-total">0</span></div>
+                <div class="stat-row"><span>本周合计:</span> <span id="p-qiao-week">0</span></div>
+                <div style="margin-top:10px; display:flex; gap:5px; flex-wrap:wrap;">
+                    <button class="btn-primary" style="font-size:12px; padding:8px;" onclick="parentDailyScore('chen_qiao')">+ 每日评分</button>
+                    <button class="btn-success" style="font-size:12px; padding:8px;" onclick="showHistory('chen_qiao')">看记录</button>
+                </div>
+            </div>
+        </div>
+
+        <h3 style="margin-top:30px; border-top:1px solid #eee; padding-top:20px;">🎁 周末兑换商城 (100分 = 1小时)</h3>
+        <div class="exchange-area">
+            <span>给陈和兑换</span>
+            <input type="number" id="ex-he-hours" min="0.5" step="0.5" placeholder="小时">
+            <button class="btn-danger" onclick="exchange('chen_he')">确认扣除</button>
+        </div>
+        <div class="exchange-area" style="background:#e3f2fd;">
+            <span>给陈翘兑换</span>
+            <input type="number" id="ex-qiao-hours" min="0.5" step="0.5" placeholder="小时">
+            <button class="btn-danger" onclick="exchange('chen_qiao')">确认扣除</button>
+        </div>
+
+        <h3 style="margin-top:30px;">📜 历史记录查看</h3>
+        <div class="history-log" id="history-display">
+            <p style="text-align:center; color:#999;">点击上方“看记录”按钮加载明细</p>
+        </div>
+
+        <div class="backup-area">
+            <h3>💾 数据备份与恢复</h3>
+            <p style="font-size:12px; color:#666;">建议每周日导出一次数据并保存到微信或备忘录中，防止浏览器清理缓存导致数据丢失。</p>
+            <textarea id="backup-data" placeholder="这里用于粘贴备份数据，或者展示导出的数据..."></textarea>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-primary" style="flex:1;" onclick="exportData()">导出数据</button>
+                <button class="btn-success" style="flex:1;" onclick="importData()">导入恢复</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 数据初始化 =================
+        const todayStr = new Date().toLocaleDateString('zh-CN'); 
+        const defaultDB = {
+            chen_he: { 
+                total: 0, logs: [], exchanges: [], 
+                streak: { lastDate: "", count: 0 }, 
+                textStreak: { lastDate: "", count: 0 },
+                jumpRope: { lastDate: "", count: 0, pending: 0 } 
+            },
+            chen_qiao: { 
+                total: 0, logs: [], exchanges: [], 
+                streak: { lastDate: "", count: 0 },
+                jumpRope: { lastDate: "", count: 0, pending: 0 }
+            }
+        };
+        let db = JSON.parse(localStorage.getItem('familyScoreDB_v8')) || JSON.parse(JSON.stringify(defaultDB));
+        let currentUser = '';
+
+        // ================= 工具函数 =================
+        function getTimeStr() {
+            const d = new Date();
+            return d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
+        }
+
+        function formatNum(num) {
+            return Number(num.toFixed(1));
+        }
+
+        function getTodayScore(user) {
+            return formatNum(db[user].logs.filter(l => l.date === todayStr).reduce((sum, l) => sum + l.points, 0));
+        }
+
+        function getWeekScore(user) {
+            const now = new Date();
+            const day = now.getDay() || 7; 
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - day + 1);
+            monday.setHours(0,0,0,0);
+            
+            let score = db[user].logs.filter(l => {
+                const logDate = new Date(l.date.replace(/\//g, '-'));
+                return logDate >= monday;
+            }).reduce((sum, l) => sum + l.points, 0);
+            return formatNum(score);
+        }
+
+        function hasDoneToday(user, taskId) {
+            return db[user].logs.some(l => l.date === todayStr && l.taskId === taskId);
+        }
+
+        function hasDoneThisWeek(user, taskId) {
+            const now = new Date();
+            const day = now.getDay() || 7; 
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - day + 1);
+            monday.setHours(0,0,0,0);
+
+            return db[user].logs.some(l => {
+                const logDate = new Date(l.date.replace(/\//g, '-'));
+                return logDate >= monday && l.taskId === taskId;
+            });
+        }
+
+        function saveData() {
+            localStorage.setItem('familyScoreDB_v8', JSON.stringify(db));
+        }
+
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+        }
+
+        // ================= 登录逻辑 =================
+        function login(role) {
+            currentUser = role;
+            if (role === 'parent') {
+                const pwd = prompt("请输入家长密码：");
+                if (pwd === "8888") { 
+                    renderParentPage();
+                    switchPage('parent-page');
+                } else if (pwd !== null) {
+                    alert("密码错误");
+                }
+            } else {
+                const now = new Date();
+                const currentHour = now.getHours();
+                if (currentHour >= 22 || currentHour < 6) {
+                    alert("🛑 已经过了 22:00 啦！\n系统已自动关闭，请放下平板，早点休息哦！");
+                    return; 
+                }
+                document.getElementById('kid-name-title').innerText = role === 'chen_he' ? '陈和的主页' : '陈翘的主页';
+                renderKidPage(role);
+                switchPage('kid-page');
+            }
+        }
+
+        // ================= 孩子端渲染 =================
+        function renderKidPage(user) {
+            document.getElementById('k-today').innerText = getTodayScore(user);
+            document.getElementById('k-total').innerText = formatNum(db[user].total);
+            
+            let html = '';
+
+            // 1. 学习目标
+            html += `<div class="category-title">🏆 学习目标 (选择科目并点击)</div>`;
+            let subjects = user === 'chen_he' ? 
+                ['语文', '数学', '英语', '政治', '历史', '生物', '地理'] : 
+                ['语文', '数学', '英语'];
+            
+            let selectHtml = `<select id="subject-${user}" class="sys-select">`;
+            subjects.forEach(s => { selectHtml += `<option value="${s}">${s}</option>`; });
+            selectHtml += `</select>`;
+
+            if (user === 'chen_he') {
+                html += `
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">班级前三</div><div class="task-desc">每日限点1次</div></div>
+                    <div class="action-btns"><button class="btn-success" onclick="addRankScore('${user}', '班级前三', 100)">达成 +100</button></div>
+                </div>
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">单科成绩</div><div class="task-desc">选科目后点击，每科每项每天限1次</div></div>
+                    <div class="action-btns">
+                        ${selectHtml}
+                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科满分', 30)">满分 +30</button>
+                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科前三', 15)">前三 +15</button>
+                    </div>
+                </div>`;
+            } else {
+                html += `
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">班级前五</div><div class="task-desc">每日限点1次</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" onclick="addRankScore('${user}', '班级前五', 100)">班前五 +100</button>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">单科成绩</div><div class="task-desc">选科目后点击，每科每项每天限1次</div></div>
+                    <div class="action-btns">
+                        ${selectHtml}
+                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科满分', 30)">满分 +30</button>
+                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科前三', 20)">前三 +20</button>
+                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科前五', 15)">前五 +15</button>
+                    </div>
+                </div>`;
+            }
+
+            // 2. 锻炼
+            const gongDone = hasDoneToday(user, 'gong');
+            let streakStr = db[user].streak.count > 0 ? `<div class="task-desc" style="color:#ff9500;">🔥 已连续打卡 ${db[user].streak.count} 天</div>` : "";
+            
+            html += `<div class="category-title">🧘 锻炼</div>
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">八部金刚功</div>${streakStr}</div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${gongDone?'disabled':''} onclick="doGong('${user}')">${gongDone?'已打卡 +5':'完成打卡 +5'}</button>
+                    </div>
+                </div>`;
+
+            // --- 跳绳模块 ---
+            const jumpDone = hasDoneToday(user, 'jumprope');
+            let jumpStreakStr = "";
+            if (db[user].jumpRope.count > 0 && db[user].jumpRope.pending > 0) {
+                jumpStreakStr = `<div class="task-desc" style="color:#d32f2f;">🔥 连续增加 ${db[user].jumpRope.count} 天，待生效：${db[user].jumpRope.pending}分</div>`;
+            } else if (db[user].jumpRope.count > 0) {
+                jumpStreakStr = `<div class="task-desc" style="color:#888;">已打卡，今日无额外增加</div>`;
+            }
+            
+            html += `<div class="task-card" style="border-color:#ff9800;">
+                <div class="task-info">
+                    <div class="task-name">跳绳挑战</div>
+                    <div class="task-desc">基础200个(+5)，多200个(+2待生效)</div>
+                    <div class="task-desc">连续5天有增加，额外分才发放，否则清零。</div>
+                    ${jumpStreakStr}
+                </div>
+                <div class="action-btns">
+                    ${jumpDone ? 
+                        `<button class="btn-gray" disabled>今日已打卡</button>` : 
+                        `<input type="number" id="jump-input-${user}" class="jump-input" placeholder="输入总数" min="1">
+                         <button class="btn-success" onclick="doJumpRope('${user}')">打卡</button>`
+                    }
+                </div>
+            </div>`;
+
+            // 3. 日常作业
+            const hwDone = hasDoneToday(user, 'homework');
+            html += `<div class="category-title">📚 日常作业</div>
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">作业完成时间</div></div>
+                    <div class="action-btns">
+                        ${user === 'chen_he' ? 
+                            `<button class="btn-primary" ${hwDone?'disabled':''} onclick="addDaily('${user}', 'homework', '20:00前', 20)">20:00前 +20</button>
+                             <button class="btn-primary" ${hwDone?'disabled':''} onclick="addDaily('${user}', 'homework', '21:00前', 10)">21:00前 +10</button>
+                             <button class="btn-primary" ${hwDone?'disabled':''} onclick="addDaily('${user}', 'homework', '21:20前', 5)">21:20前 +5</button>` : 
+                            `<button class="btn-primary" ${hwDone?'disabled':''} onclick="addDaily('${user}', 'homework', '19:30前', 20)">19:30前 +20</button>
+                             <button class="btn-primary" ${hwDone?'disabled':''} onclick="addDaily('${user}', 'homework', '20:30前', 10)">20:30前 +10</button>`}
+                    </div>
+                </div>`;
+
+            // 4. 睡眠
+            const sleepDone = hasDoneToday(user, 'sleep');
+            html += `<div class="category-title">🛏️ 睡眠</div>
+                <div class="task-card">
+                    <div class="task-info"><div class="task-name">上床时间</div></div>
+                    <div class="action-btns">
+                        ${user === 'chen_he' ? 
+                            `<button class="btn-success" ${sleepDone?'disabled':''} onclick="addDaily('${user}', 'sleep', '21:30前上床', 5)">21:30前 +5</button>
+                             <button class="btn-danger" ${sleepDone?'disabled':''} onclick="addDaily('${user}', 'sleep', '22:00后上床', -5)">22:00后 -5</button>` : 
+                            `<button class="btn-success" ${sleepDone?'disabled':''} onclick="addDaily('${user}', 'sleep', '21:00前上床', 10)">21:00前 +10</button>
+                             <button class="btn-success" ${sleepDone?'disabled':''} onclick="addDaily('${user}', 'sleep', '21:30前上床', 5)">21:30前 +5</button>`}
+                    </div>
+                </div>`;
+
+            // 5. 专项练习
+            html += `<div class="category-title">📖 专项练习</div>`;
+            if (user === 'chen_he') {
+                const textDone = hasDoneToday(user, 'textbook');
+                let textStreakStr = "";
+                if (db[user].textStreak.count > 0) {
+                    textStreakStr = `<div class="task-desc" style="color:#ff9500;">🔥 连续完成 ${db[user].textStreak.count} 天</div>`;
+                }
+                
+                let checkboxes = `
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="chk-chinese"> 语文</label>
+                    <label><input type="checkbox" id="chk-math"> 数学</label>
+                    <label><input type="checkbox" id="chk-english"> 英语</label>
+                </div>`;
+
+                html += `<div class="task-card" style="border-color:#7cb342;">
+                    <div class="task-info">
+                        <div class="task-name">教材全解 (各5页)</div>
+                        ${textStreakStr}
+                    </div>
+                    <div class="action-btns">
+                        ${textDone ? 
+                            `<button class="btn-gray" disabled>今日已全完成</button>` : 
+                            `${checkboxes} <button class="btn-success" onclick="doTextbook('${user}')">提交</button>`
+                        }
+                    </div>
+                </div>`;
+
+                const writeNumDone = hasDoneToday(user, 'write_num');
+                const writeCharDone = hasDoneToday(user, 'write_char');
+                html += `<div class="task-card" style="border-color:#7cb342;">
+                    <div class="task-info"><div class="task-name">练字 (各一页)</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${writeNumDone?'disabled':''} onclick="addDaily('${user}', 'write_num', '练字(数字)', 2.5)">${writeNumDone?'数字✓':'数字 +2.5'}</button>
+                        <button class="btn-success" ${writeCharDone?'disabled':''} onclick="addDaily('${user}', 'write_char', '练字(汉字)', 2.5)">${writeCharDone?'汉字✓':'汉字 +2.5'}</button>
+                    </div>
+                </div>`;
+
+            } else {
+                const calcDone = hasDoneToday(user, 'calculation');
+                html += `<div class="task-card" style="border-color:#7cb342;">
+                    <div class="task-info"><div class="task-name">计算能手 (每日一页)</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${calcDone?'disabled':''} onclick="addDaily('${user}', 'calculation', '计算能手', 5)">${calcDone?'已完成 +5':'完成一页 +5'}</button>
+                    </div>
+                </div>`;
+            }
+
+            // 6. 养生与日常
+            html += `<div class="category-title">💊 养生与日常</div>`;
+            
+            const readDone = hasDoneToday(user, 'reading');
+            html += `<div class="task-card">
+                    <div class="task-info"><div class="task-name">日拱一卒 (完成阅读)</div><div class="task-desc">奖励1小时，另加5分</div></div>
+                    <div class="action-btns"><button class="btn-success" ${readDone?'disabled':''} onclick="addDaily('${user}', 'reading', '日拱一卒', 5)">${readDone?'已打卡 +5':'完成 +5'}</button></div>
+                </div>`;
+
+            const sockDone = hasDoneToday(user, 'socks');
+            html += `<div class="task-card">
+                    <div class="task-info"><div class="task-name">穿袜子 (午睡/晚睡)</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${sockDone?'disabled':''} onclick="addDaily('${user}', 'socks', '穿袜子', 5)">穿了 +5</button>
+                        <button class="btn-danger" ${sockDone?'disabled':''} onclick="addDaily('${user}', 'socks', '未穿袜子', -10)">没穿 -10</button>
+                    </div>
+                </div>`;
+
+            const washDailyDone = hasDoneToday(user, 'wash_daily');
+            const washWeeklyDone = hasDoneThisWeek(user, 'wash_weekly');
+            
+            html += `<div class="task-card" style="border-color:#4fc3f7;">
+                    <div class="task-info"><div class="task-name">刷牙洗脸</div><div class="task-desc">每日习惯与每周检查</div></div>
+                    <div class="action-btns">
+                        <button class="btn-primary" ${washDailyDone?'disabled':''} onclick="addDaily('${user}', 'wash_daily', '刷牙洗脸(每日)', 1)">${washDailyDone?'今日已打卡 +1':'每日完成 +1'}</button>
+                        <button class="btn-success" ${washWeeklyDone?'disabled':''} onclick="addWeeklyWash('${user}')">${washWeeklyDone?'本周已领 +5':'本周无牙菌斑 +5'}</button>
+                    </div>
+                </div>`;
+
+            const tutorDone = hasDoneToday(user, 'tutor');
+            html += `<div class="task-card">
+                    <div class="task-info"><div class="task-name">补习班复习</div><div class="task-desc">学后及时打卡</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${tutorDone?'disabled':''} onclick="addDaily('${user}', 'tutor', '补习班打卡', 10)">打卡 +10</button>
+                        <button class="btn-danger" ${tutorDone?'disabled':''} onclick="addDaily('${user}', 'tutor', '补习班未打卡', -10)">反之 -10</button>
+                    </div>
+                </div>`;
+
+            // 专属任务
+            if (user === 'chen_he') {
+                const pillMorningDone = hasDoneToday(user, 'bazhenwan_morning');
+                const pillNoonDone = hasDoneToday(user, 'bazhenwan_noon');
+                const pillPenaltyDone = hasDoneToday(user, 'bazhenwan_penalty');
+                
+                html += `<div class="task-card" style="border-color:#ffd700;">
+                    <div class="task-info"><div class="task-name">八珍丸 (早/中各一颗)</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${pillMorningDone?'disabled':''} onclick="addDaily('${user}', 'bazhenwan_morning', '八珍丸(早)', 2.5)">${pillMorningDone?'早✓':'早上 +2.5'}</button>
+                        <button class="btn-success" ${pillNoonDone?'disabled':''} onclick="addDaily('${user}', 'bazhenwan_noon', '八珍丸(中)', 2.5)">${pillNoonDone?'中✓':'中午 +2.5'}</button>
+                        <button class="btn-danger" ${pillPenaltyDone?'disabled':''} onclick="addDaily('${user}', 'bazhenwan_penalty', '八珍丸没吃', -10)">没吃 -10</button>
+                    </div>
+                </div>`;
+            } else {
+                const pillDone = hasDoneToday(user, 'guijiajiao');
+                html += `<div class="task-card" style="border-color:#ffd700;">
+                    <div class="task-info"><div class="task-name">龟甲胶 (每日两片)</div></div>
+                    <div class="action-btns">
+                        <button class="btn-success" ${pillDone?'disabled':''} onclick="addDaily('${user}', 'guijiajiao', '龟甲胶', 5)">吃完 +5</button>
+                        <button class="btn-danger" ${pillDone?'disabled':''} onclick="addDaily('${user}', 'guijiajiao', '龟甲胶没吃', -10)">没吃 -10</button>
+                    </div>
+                </div>`;
+            }
+
+            html += `<div class="category-title">⚠️ 特殊记录</div>
+                <div class="task-card" style="border-color:#ffcccb;">
+                    <div class="task-info"><div class="task-name">发生争吵</div><div class="task-desc">双方各扣20分</div></div>
+                    <div class="action-btns"><button class="btn-danger" onclick="addScore('${user}', '争吵', -20)">记录争吵 -20</button></div>
+                </div>`;
+
+            document.getElementById('task-container').innerHTML = html;
+        }
+
+        // ================= 积分增加逻辑 =================
+        
+        // 通用加分任务（无每日次数限制）
+        function addScore(user, taskName, points) {
+            db[user].total = formatNum(db[user].total + points);
+            db[user].logs.push({ 
+                date: todayStr, 
+                time: getTimeStr(), 
+                taskId: 'special', 
+                taskName: taskName, 
+                points: points 
+            });
+            saveData();
+            renderKidPage(user); 
+        }
+
+        // 新增：班级排名防作弊（每日限1次）
+        function addRankScore(user, rankName, points) {
+            if (hasDoneToday(user, rankName)) {
+                alert(`今天已经记录过【${rankName}】啦，每天只能记录一次哦！`);
+                return;
+            }
+            addScore(user, rankName, points);
+        }
+
+        // 修改：单科成绩防作弊（同科同项限1次，总数不超过总科目数）
+        function addSubjectScore(user, typeName, points) {
+            const selectEl = document.getElementById(`subject-${user}`);
+            const subject = selectEl.value;
+            const fullTaskName = `${typeName}(${subject})`;
+            
+            const totalSubjects = user === 'chen_he' ? 7 : 3;
+            
+            // 1. 检查今天该科目是否已经点过该奖项
+            const alreadyDoneThisSubject = db[user].logs.some(l => 
+                l.date === todayStr && l.taskName === fullTaskName
+            );
+            if (alreadyDoneThisSubject) {
+                alert(`今天【${subject}】的【${typeName}】已经记录过啦，不能重复点哦！`);
+                return;
+            }
+
+            // 2. 检查今天该奖项的总点击次数是否超过总科目数
+            const todayTypeCount = db[user].logs.filter(l => 
+                l.date === todayStr && l.taskName.includes(typeName)
+            ).length;
+            if (todayTypeCount >= totalSubjects) {
+                alert(`今天【${typeName}】的次数已达上限（最多${totalSubjects}门），请明天再记录吧！`);
+                return;
+            }
+
+            addScore(user, fullTaskName, points);
+        }
+
+        function addDaily(user, taskId, taskName, points) {
+            if (hasDoneToday(user, taskId)) return; 
+            
+            db[user].total = formatNum(db[user].total + points);
+            db[user].logs.push({ 
+                date: todayStr, 
+                time: getTimeStr(),
+                taskId: taskId, 
+                taskName: taskName, 
+                points: points 
+            });
+            saveData();
+            renderKidPage(user);
+        }
+
+        function addWeeklyWash(user) {
+            if (hasDoneThisWeek(user, 'wash_weekly')) {
+                alert("本周已经领取过无牙菌斑奖励啦！");
+                return;
+            }
+            
+            db[user].total = formatNum(db[user].total + 5);
+            db[user].logs.push({ 
+                date: todayStr, 
+                time: getTimeStr(),
+                taskId: 'wash_weekly', 
+                taskName: '刷牙洗脸(本周无牙菌斑)', 
+                points: 5 
+            });
+            saveData();
+            renderKidPage(user);
+            alert("太棒了！继续保持，本周无牙菌斑 +5 分！");
+        }
+
+        function doGong(user) {
+            if (hasDoneToday(user, 'gong')) return;
+            const today = new Date();
+            const lastDate = db[user].streak.lastDate ? new Date(db[user].streak.lastDate) : null;
+            let count = db[user].streak.count;
+
+            if (lastDate) {
+                const diffDays = Math.ceil(Math.abs(today - lastDate) / (1000 * 60 * 60 * 24)); 
+                if (diffDays === 1) { count += 1; } 
+                else if (diffDays > 1) { count = 1; }
+            } else { count = 1; }
+
+            db[user].streak.lastDate = todayStr;
+            db[user].streak.count = count;
+
+            let points = 5;
+            let taskName = '八部金刚功';
+            
+            if (count === 7) {
+                points += 10; taskName += '(连续一周奖励)';
+                alert("🎉 恭喜达成连续一周！额外奖励10分！");
+            } else if (count === 30) {
+                points += 30; taskName += '(连续一月奖励)';
+                alert("🏆 太棒了！达成连续一月！额外奖励30分！");
+            } else if (count === 90) {
+                points += 50; taskName += '(连续三月奖励)';
+                alert("🔥 奇迹！连续三月！额外奖励50分！");
+            }
+
+            db[user].total = formatNum(db[user].total + points);
+            db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'gong', taskName: taskName, points: points });
+            saveData();
+            renderKidPage(user);
+        }
+
+        function doTextbook(user) {
+            if (hasDoneToday(user, 'textbook')) return;
+
+            const chkChinese = document.getElementById('chk-chinese');
+            const chkMath = document.getElementById('chk-math');
+            const chkEnglish = document.getElementById('chk-english');
+
+            if (!chkChinese.checked || !chkMath.checked || !chkEnglish.checked) {
+                alert("请将 语文、数学、英语 三项全部勾选后再提交哦！");
+                return;
+            }
+
+            const today = new Date();
+            const lastDate = db[user].textStreak.lastDate ? new Date(db[user].textStreak.lastDate) : null;
+            let count = db[user].textStreak.count;
+
+            if (lastDate) {
+                const diffDays = Math.ceil(Math.abs(today - lastDate) / (1000 * 60 * 60 * 24)); 
+                if (diffDays === 1) { count += 1; } 
+                else if (diffDays > 1) { count = 1; }
+            } else { count = 1; }
+
+            db[user].textStreak.lastDate = todayStr;
+            db[user].textStreak.count = count;
+
+            let points = 5;
+            let taskName = '教材全解(语数英全完成)';
+            
+            if (count % 7 === 0) {
+                points += 10;
+                taskName += '(连续一周奖励)';
+                alert(`🎉 恭喜连续完成${count}天教材全解！额外奖励10分！`);
+            }
+
+            db[user].total = formatNum(db[user].total + points);
+            db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'textbook', taskName: taskName, points: points });
+            saveData();
+            renderKidPage(user);
+        }
+
+        function doJumpRope(user) {
+            if (hasDoneToday(user, 'jumprope')) return;
+
+            const inputVal = document.getElementById(`jump-input-${user}`).value;
+            const totalJumps = parseInt(inputVal);
+
+            if (isNaN(totalJumps) || totalJumps < 200) {
+                alert("每天至少需要跳200个才能打卡哦！");
+                return;
+            }
+
+            let immediatePoints = 5; 
+            let logTaskName = `跳绳${totalJumps}个(基础)`;
+            let extraPoints = Math.floor((totalJumps - 200) / 200) * 2;
+
+            const today = new Date();
+            const lastDate = db[user].jumpRope.lastDate ? new Date(db[user].jumpRope.lastDate) : null;
+            let count = db[user].jumpRope.count;
+            let pending = db[user].jumpRope.pending;
+
+            if (extraPoints > 0) {
+                if (lastDate) {
+                    const diffDays = Math.ceil(Math.abs(today - lastDate) / (1000 * 60 * 60 * 24)); 
+                    if (diffDays === 1) { count += 1; pending += extraPoints; } 
+                    else if (diffDays > 1) { count = 1; pending = extraPoints; }
+                } else {
+                    count = 1; pending = extraPoints;
+                }
+
+                if (count === 5) {
+                    let finalBonus = pending;
+                    db[user].total = formatNum(db[user].total + finalBonus); 
+                    immediatePoints = formatNum(immediatePoints + finalBonus); 
+                    logTaskName += ` + 连击结算(${finalBonus}分)`;
+                    count = 0; pending = 0;
+                    alert(`🔥 太棒了！你连续5天都有额外增加！前几天的待生效积分 ${finalBonus} 分现已一次性发放！`);
+                } else {
+                    logTaskName += ` (额外${extraPoints}分待生效)`;
+                }
+            } else {
+                if (pending > 0) {
+                    alert(`⚠️ 可惜！你今天没有增加跳绳数量，之前攒的 ${pending} 分待生效积分已清零。`);
+                }
+                count = 0; pending = 0;
+                logTaskName += ` (无额外增加)`;
+            }
+
+            db[user].jumpRope.lastDate = todayStr;
+            db[user].jumpRope.count = count;
+            db[user].jumpRope.pending = pending;
+
+            db[user].total = formatNum(db[user].total + 5); 
+            db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'jumprope', taskName: logTaskName, points: immediatePoints });
+            
+            saveData();
+            renderKidPage(user);
+        }
+
+        // ================= 家长端逻辑 =================
+        function renderParentPage() {
+            document.getElementById('p-he-total').innerText = formatNum(db.chen_he.total);
+            document.getElementById('p-he-week').innerText = getWeekScore('chen_he');
+            
+            document.getElementById('p-qiao-total').innerText = formatNum(db.chen_qiao.total);
+            document.getElementById('p-qiao-week').innerText = getWeekScore('chen_qiao');
+        }
+
+        function parentDailyScore(user) {
+            const scoreStr = prompt(`给 ${user === 'chen_he' ? '陈和' : '陈翘'} 今日表现打分 (-5 到 +5)：`, "0");
+            if (scoreStr !== null) {
+                const score = parseInt(scoreStr);
+                if (!isNaN(score) && score >= -5 && score <= 5) {
+                    db[user].total = formatNum(db[user].total + score);
+                    db[user].logs.push({ 
+                        date: todayStr, 
+                        time: getTimeStr(),
+                        taskId: 'parent_score', 
+                        taskName: '家长每日评价', 
+                        points: score 
+                    });
+                    saveData();
+                    renderParentPage();
+                    alert("评分成功！");
+                } else {
+                    alert("输入无效，请输入 -5 到 +5 的整数。");
+                }
+            }
+        }
+
+        function exchange(user) {
+            const inputId = user === 'chen_he' ? 'ex-he-hours' : 'ex-qiao-hours';
+            const hours = parseFloat(document.getElementById(inputId).value);
+            
+            if (isNaN(hours) || hours <= 0) {
+                alert("请输入有效的兑换小时数。");
+                return;
+            }
+
+            const cost = hours * 100;
+            if (db[user].total < cost) {
+                alert("积分不足，无法兑换！");
+                return;
+            }
+
+            if(confirm(`确认扣除 ${cost} 积分，为${user==='chen_he'?'陈和':'陈翘'}兑换 ${hours} 小时？`)) {
+                db[user].total = formatNum(db[user].total - cost);
+                db[user].exchanges.push({ date: todayStr, time: getTimeStr(), hours: hours, cost: cost });
+                db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'exchange', taskName: `兑换 ${hours} 小时娱乐`, points: -cost });
+                saveData();
+                renderParentPage();
+                document.getElementById(inputId).value = '';
+                alert("兑换成功！");
+            }
+        }
+
+        function showHistory(user) {
+            const display = document.getElementById('history-display');
+            let html = `<h4 style="margin:0 0 10px 0; text-align:center;">${user === 'chen_he' ? '陈和' : '陈翘'} 的流水明细</h4>`;
+            
+            if (db[user].exchanges.length > 0) {
+                html += `<div style="background:#fff0f0; padding:10px; border-radius:8px; margin-bottom:10px;">
+                    <b>🎁 兑换记录：</b><br>`;
+                db[user].exchanges.forEach(ex => {
+                    html += `${ex.date} ${ex.time || ''} - 兑换 ${ex.hours} 小时 (扣除 ${ex.cost} 分)<br>`;
+                });
+                html += `</div>`;
+            }
+
+            const logs = [...db[user].logs].reverse();
+            if (logs.length === 0) {
+                html += `<p style="text-align:center; color:#999;">暂无记录</p>`;
+            } else {
+                logs.forEach(l => {
+                    const color = l.points >= 0 ? 'green' : 'red';
+                    const sign = l.points >= 0 ? '+' : '';
+                    const timeShow = l.time ? ` <span style="color:#999; font-size:12px;">${l.time}</span>` : '';
+                    html += `<div class="log-item">
+                        <span>${l.date}${timeShow} - ${l.taskName}</span>
+                        <span style="color:${color}; font-weight:bold;">${sign}${l.points}</span>
+                    </div>`;
+                });
+            }
+            display.innerHTML = html;
+        }
+
+        // ================= 数据备份功能 =================
+        function exportData() {
+            const dataStr = JSON.stringify(db, null, 2); 
+            document.getElementById('backup-data').value = dataStr;
+            
+            const blob = new Blob([dataStr], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dateStr = new Date().toISOString().slice(0,10);
+            a.href = url;
+            a.download = `家庭积分备份_${dateStr}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            alert("数据已导出到文本框，并尝试下载文件。建议复制文本框内容保存到微信。");
+        }
+
+        function importData() {
+            const dataStr = document.getElementById('backup-data').value.trim();
+            if (!dataStr) {
+                alert("请先在文本框中粘贴备份数据！");
+                return;
+            }
+            try {
+                const parsedData = JSON.parse(dataStr);
+                if (parsedData.chen_he && parsedData.chen_qiao) {
+                    if(confirm("⚠️ 警告：导入将覆盖当前所有的积分记录，确定要恢复吗？")) {
+                        db = parsedData;
+                        if (!db.chen_he.jumpRope) db.chen_he.jumpRope = { lastDate: "", count: 0, pending: 0 };
+                        if (!db.chen_qiao.jumpRope) db.chen_qiao.jumpRope = { lastDate: "", count: 0, pending: 0 };
+                        
+                        saveData();
+                        renderParentPage();
+                        alert("数据恢复成功！");
+                        document.getElementById('backup-data').value = '';
+                    }
+                } else {
+                    alert("数据格式不正确，缺少关键信息。");
+                }
+            } catch (e) {
+                alert("解析失败！请确保复制了完整的备份代码。");
+            }
+        }
+    </script>
+</body>
+</html>

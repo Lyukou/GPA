@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>家庭积分系统</title>
     <style>
-        :root { --primary: #007aff; --success: #34c759; --danger: #ff3b30; --gray: #8e8e93; --bg: #f0f2f5; }
+        :root { --primary: #007aff; --success: #34c759; --danger: #ff3b30; --warning: #ff9500; --gray: #8e8e93; --bg: #f0f2f5; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); padding: 15px; margin: 0; -webkit-tap-highlight-color: transparent; }
         .page { display: none; max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         .active { display: block; animation: fadeIn 0.3s ease; }
@@ -20,6 +20,7 @@
         .btn-primary { background: var(--primary); color: white; }
         .btn-success { background: var(--success); color: white; }
         .btn-danger { background: var(--danger); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
         .btn-gray { background: var(--gray); color: white; }
 
         .btn-group { display: flex; flex-direction: column; gap: 15px; margin-top: 40px; }
@@ -57,6 +58,11 @@
 
         .backup-area { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
         .backup-area textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+
+        /* 待审核卡片样式 */
+        .pending-card { background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .pending-info { font-size: 15px; color: #333; }
+        .pending-info span { font-weight: bold; color: var(--warning); }
     </style>
 </head>
 <body>
@@ -109,6 +115,12 @@
             </div>
         </div>
 
+        <!-- 待审核区域 -->
+        <h3 style="margin-top:30px; color: #d84315;">⏳ 待审核任务</h3>
+        <div id="pending-container" style="margin-bottom: 20px;">
+            <p style="text-align:center; color:#999; font-size:14px;">暂无待审核任务</p>
+        </div>
+
         <h3 style="margin-top:30px; border-top:1px solid #eee; padding-top:20px;">🎁 周末兑换商城 (100分 = 1小时)</h3>
         <div class="exchange-area">
             <span>给陈和兑换</span>
@@ -142,19 +154,23 @@
         const todayStr = new Date().toLocaleDateString('zh-CN'); 
         const defaultDB = {
             chen_he: { 
-                total: 0, logs: [], exchanges: [], 
+                total: 0, logs: [], exchanges: [], pendingLogs: [],
                 streak: { lastDate: "", count: 0 }, 
                 textStreak: { lastDate: "", count: 0 },
                 jumpRope: { lastDate: "", count: 0, pending: 0 } 
             },
             chen_qiao: { 
-                total: 0, logs: [], exchanges: [], 
+                total: 0, logs: [], exchanges: [], pendingLogs: [],
                 streak: { lastDate: "", count: 0 },
                 jumpRope: { lastDate: "", count: 0, pending: 0 }
             }
         };
-        let db = JSON.parse(localStorage.getItem('familyScoreDB_v8')) || JSON.parse(JSON.stringify(defaultDB));
+        let db = JSON.parse(localStorage.getItem('familyScoreDB_v9')) || JSON.parse(JSON.stringify(defaultDB));
         let currentUser = '';
+
+        // 数据兼容：确保有 pendingLogs 数组
+        if (!db.chen_he.pendingLogs) db.chen_he.pendingLogs = [];
+        if (!db.chen_qiao.pendingLogs) db.chen_qiao.pendingLogs = [];
 
         // ================= 工具函数 =================
         function getTimeStr() {
@@ -184,8 +200,19 @@
             return formatNum(score);
         }
 
+        // 检查今天是否已通过（在正式日志中）
         function hasDoneToday(user, taskId) {
             return db[user].logs.some(l => l.date === todayStr && l.taskId === taskId);
+        }
+
+        // 检查今天是否已提交过待审核（在待审核池中）
+        function hasPendingToday(user, taskId) {
+            return db[user].pendingLogs.some(l => l.date === todayStr && l.taskId === taskId);
+        }
+
+        // 综合检查：今日已打卡 或 已提交待审核
+        function hasDoneOrPendingToday(user, taskId) {
+            return hasDoneToday(user, taskId) || hasPendingToday(user, taskId);
         }
 
         function hasDoneThisWeek(user, taskId) {
@@ -202,7 +229,7 @@
         }
 
         function saveData() {
-            localStorage.setItem('familyScoreDB_v8', JSON.stringify(db));
+            localStorage.setItem('familyScoreDB_v9', JSON.stringify(db));
         }
 
         function switchPage(pageId) {
@@ -241,8 +268,8 @@
             
             let html = '';
 
-            // 1. 学习目标
-            html += `<div class="category-title">🏆 学习目标 (选择科目并点击)</div>`;
+            // 1. 学习目标（加入待审核机制）
+            html += `<div class="category-title">🏆 学习目标 (提交后需家长审核)</div>`;
             let subjects = user === 'chen_he' ? 
                 ['语文', '数学', '英语', '政治', '历史', '生物', '地理'] : 
                 ['语文', '数学', '英语'];
@@ -251,40 +278,67 @@
             subjects.forEach(s => { selectHtml += `<option value="${s}">${s}</option>`; });
             selectHtml += `</select>`;
 
+            // 检查待审核状态
+            let hasPendingRank = false;
             if (user === 'chen_he') {
+                hasPendingRank = hasDoneOrPendingToday(user, '班级前三');
                 html += `
                 <div class="task-card">
-                    <div class="task-info"><div class="task-name">班级前三</div><div class="task-desc">每日限点1次</div></div>
-                    <div class="action-btns"><button class="btn-success" onclick="addRankScore('${user}', '班级前三', 100)">达成 +100</button></div>
+                    <div class="task-info"><div class="task-name">班级前三</div><div class="task-desc">每日限报1次，需审核</div></div>
+                    <div class="action-btns">
+                        <button class="btn-warning" ${hasPendingRank?'disabled':''} onclick="submitForApproval('${user}', '班级前三', 100)">${hasPendingRank?'已提交':'提交审核 +100'}</button>
+                    </div>
                 </div>
                 <div class="task-card">
-                    <div class="task-info"><div class="task-name">单科成绩</div><div class="task-desc">选科目后点击，每科每项每天限1次</div></div>
+                    <div class="task-info"><div class="task-name">单科成绩</div><div class="task-desc">选科目提交，需审核</div></div>
                     <div class="action-btns">
                         ${selectHtml}
-                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科满分', 30)">满分 +30</button>
-                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科前三', 15)">前三 +15</button>
+                        <button class="btn-warning" onclick="submitSubjectForApproval('${user}', '单科满分', 30)">满分审核 +30</button>
+                        <button class="btn-warning" onclick="submitSubjectForApproval('${user}', '单科前三', 15)">前三审核 +15</button>
                     </div>
                 </div>`;
             } else {
+                hasPendingRank = hasDoneOrPendingToday(user, '班级前五');
                 html += `
                 <div class="task-card">
-                    <div class="task-info"><div class="task-name">班级前五</div><div class="task-desc">每日限点1次</div></div>
+                    <div class="task-info"><div class="task-name">班级前五</div><div class="task-desc">每日限报1次，需审核</div></div>
                     <div class="action-btns">
-                        <button class="btn-success" onclick="addRankScore('${user}', '班级前五', 100)">班前五 +100</button>
+                        <button class="btn-warning" ${hasPendingRank?'disabled':''} onclick="submitForApproval('${user}', '班级前五', 100)">${hasPendingRank?'已提交':'提交审核 +100'}</button>
                     </div>
                 </div>
                 <div class="task-card">
-                    <div class="task-info"><div class="task-name">单科成绩</div><div class="task-desc">选科目后点击，每科每项每天限1次</div></div>
+                    <div class="task-info"><div class="task-name">单科成绩</div><div class="task-desc">选科目提交，需审核</div></div>
                     <div class="action-btns">
                         ${selectHtml}
-                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科满分', 30)">满分 +30</button>
-                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科前三', 20)">前三 +20</button>
-                        <button class="btn-success" onclick="addSubjectScore('${user}', '单科前五', 15)">前五 +15</button>
+                        <button class="btn-warning" onclick="submitSubjectForApproval('${user}', '单科满分', 30)">满分审核 +30</button>
+                        <button class="btn-warning" onclick="submitSubjectForApproval('${user}', '单科前三', 20)">前三审核 +20</button>
+                        <button class="btn-warning" onclick="submitSubjectForApproval('${user}', '单科前五', 15)">前五审核 +15</button>
                     </div>
                 </div>`;
             }
 
-            // 2. 锻炼
+            // 2. 生活日常（新增起床和书桌）
+            html += `<div class="category-title">🌅 生活日常</div>`;
+            
+            const wakeDone = hasDoneToday(user, 'wake_up');
+            html += `<div class="task-card">
+                <div class="task-info"><div class="task-name">起床时间 (7:00标准)</div><div class="task-desc">7:00完成+1，迟于7:05扣1</div></div>
+                <div class="action-btns">
+                    <button class="btn-success" ${wakeDone?'disabled':''} onclick="addDaily('${user}', 'wake_up', '按时起床', 1)">按时 +1</button>
+                    <button class="btn-danger" ${wakeDone?'disabled':''} onclick="addDaily('${user}', 'wake_up', '起床迟到', -1)">迟于7:05 -1</button>
+                </div>
+            </div>`;
+
+            const deskDone = hasDoneToday(user, 'desk_clean');
+            html += `<div class="task-card">
+                <div class="task-info"><div class="task-name">书桌清洁度</div><div class="task-desc">整洁+2，乱-2</div></div>
+                <div class="action-btns">
+                    <button class="btn-success" ${deskDone?'disabled':''} onclick="addDaily('${user}', 'desk_clean', '书桌整洁', 2)">整洁 +2</button>
+                    <button class="btn-danger" ${deskDone?'disabled':''} onclick="addDaily('${user}', 'desk_clean', '书桌乱', -2)">乱 -2</button>
+                </div>
+            </div>`;
+
+            // 3. 锻炼
             const gongDone = hasDoneToday(user, 'gong');
             let streakStr = db[user].streak.count > 0 ? `<div class="task-desc" style="color:#ff9500;">🔥 已连续打卡 ${db[user].streak.count} 天</div>` : "";
             
@@ -321,7 +375,7 @@
                 </div>
             </div>`;
 
-            // 3. 日常作业
+            // 4. 日常作业
             const hwDone = hasDoneToday(user, 'homework');
             html += `<div class="category-title">📚 日常作业</div>
                 <div class="task-card">
@@ -336,7 +390,7 @@
                     </div>
                 </div>`;
 
-            // 4. 睡眠
+            // 5. 睡眠
             const sleepDone = hasDoneToday(user, 'sleep');
             html += `<div class="category-title">🛏️ 睡眠</div>
                 <div class="task-card">
@@ -350,7 +404,7 @@
                     </div>
                 </div>`;
 
-            // 5. 专项练习
+            // 6. 专项练习
             html += `<div class="category-title">📖 专项练习</div>`;
             if (user === 'chen_he') {
                 const textDone = hasDoneToday(user, 'textbook');
@@ -399,7 +453,7 @@
                 </div>`;
             }
 
-            // 6. 养生与日常
+            // 7. 养生与日常
             html += `<div class="category-title">💊 养生与日常</div>`;
             
             const readDone = hasDoneToday(user, 'reading');
@@ -473,69 +527,60 @@
 
         // ================= 积分增加逻辑 =================
         
-        // 通用加分任务（无每日次数限制）
+        // 直接加分任务
         function addScore(user, taskName, points) {
             db[user].total = formatNum(db[user].total + points);
-            db[user].logs.push({ 
-                date: todayStr, 
-                time: getTimeStr(), 
-                taskId: 'special', 
-                taskName: taskName, 
-                points: points 
-            });
+            db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'special', taskName: taskName, points: points });
             saveData();
             renderKidPage(user); 
         }
 
-        // 新增：班级排名防作弊（每日限1次）
-        function addRankScore(user, rankName, points) {
-            if (hasDoneToday(user, rankName)) {
-                alert(`今天已经记录过【${rankName}】啦，每天只能记录一次哦！`);
+        // 提交待审核（班级排名）
+        function submitForApproval(user, taskName, points) {
+            if (hasDoneOrPendingToday(user, taskName)) {
+                alert("今天已经提交过该项啦，请等待家长审核！");
                 return;
             }
-            addScore(user, rankName, points);
+            db[user].pendingLogs.push({ date: todayStr, time: getTimeStr(), taskId: taskName, taskName: taskName, points: points });
+            saveData();
+            renderKidPage(user);
+            alert("提交成功！请通知家长进行审核。");
         }
 
-        // 修改：单科成绩防作弊（同科同项限1次，总数不超过总科目数）
-        function addSubjectScore(user, typeName, points) {
+        // 提交待审核（单科成绩）
+        function submitSubjectForApproval(user, typeName, points) {
             const selectEl = document.getElementById(`subject-${user}`);
             const subject = selectEl.value;
             const fullTaskName = `${typeName}(${subject})`;
-            
             const totalSubjects = user === 'chen_he' ? 7 : 3;
             
-            // 1. 检查今天该科目是否已经点过该奖项
-            const alreadyDoneThisSubject = db[user].logs.some(l => 
-                l.date === todayStr && l.taskName === fullTaskName
-            );
-            if (alreadyDoneThisSubject) {
-                alert(`今天【${subject}】的【${typeName}】已经记录过啦，不能重复点哦！`);
+            // 查重（含已通过和待审核）
+            const alreadyExist = db[user].logs.some(l => l.date === todayStr && l.taskName === fullTaskName) || 
+                                 db[user].pendingLogs.some(l => l.date === todayStr && l.taskName === fullTaskName);
+            if (alreadyExist) {
+                alert(`今天【${subject}】的【${typeName}】已经提交过啦！`);
                 return;
             }
 
-            // 2. 检查今天该奖项的总点击次数是否超过总科目数
-            const todayTypeCount = db[user].logs.filter(l => 
-                l.date === todayStr && l.taskName.includes(typeName)
-            ).length;
+            // 查总数量上限（含已通过和待审核）
+            const todayTypeCount = db[user].logs.filter(l => l.date === todayStr && l.taskName.includes(typeName)).length + 
+                                   db[user].pendingLogs.filter(l => l.date === todayStr && l.taskName.includes(typeName)).length;
             if (todayTypeCount >= totalSubjects) {
-                alert(`今天【${typeName}】的次数已达上限（最多${totalSubjects}门），请明天再记录吧！`);
+                alert(`今天【${typeName}】次数已达上限（最多${totalSubjects}门）。`);
                 return;
             }
 
-            addScore(user, fullTaskName, points);
+            db[user].pendingLogs.push({ date: todayStr, time: getTimeStr(), taskId: 'subject', taskName: fullTaskName, points: points });
+            saveData();
+            renderKidPage(user);
+            alert(`【${subject}】${typeName}已提交，请等待家长审核！`);
         }
 
         function addDaily(user, taskId, taskName, points) {
             if (hasDoneToday(user, taskId)) return; 
             
             db[user].total = formatNum(db[user].total + points);
-            db[user].logs.push({ 
-                date: todayStr, 
-                time: getTimeStr(),
-                taskId: taskId, 
-                taskName: taskName, 
-                points: points 
-            });
+            db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: taskId, taskName: taskName, points: points });
             saveData();
             renderKidPage(user);
         }
@@ -547,13 +592,7 @@
             }
             
             db[user].total = formatNum(db[user].total + 5);
-            db[user].logs.push({ 
-                date: todayStr, 
-                time: getTimeStr(),
-                taskId: 'wash_weekly', 
-                taskName: '刷牙洗脸(本周无牙菌斑)', 
-                points: 5 
-            });
+            db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'wash_weekly', taskName: '刷牙洗脸(本周无牙菌斑)', points: 5 });
             saveData();
             renderKidPage(user);
             alert("太棒了！继续保持，本周无牙菌斑 +5 分！");
@@ -577,16 +616,9 @@
             let points = 5;
             let taskName = '八部金刚功';
             
-            if (count === 7) {
-                points += 10; taskName += '(连续一周奖励)';
-                alert("🎉 恭喜达成连续一周！额外奖励10分！");
-            } else if (count === 30) {
-                points += 30; taskName += '(连续一月奖励)';
-                alert("🏆 太棒了！达成连续一月！额外奖励30分！");
-            } else if (count === 90) {
-                points += 50; taskName += '(连续三月奖励)';
-                alert("🔥 奇迹！连续三月！额外奖励50分！");
-            }
+            if (count === 7) { points += 10; taskName += '(连续一周奖励)'; alert("🎉 恭喜达成连续一周！额外奖励10分！"); } 
+            else if (count === 30) { points += 30; taskName += '(连续一月奖励)'; alert("🏆 太棒了！达成连续一月！额外奖励30分！"); } 
+            else if (count === 90) { points += 50; taskName += '(连续三月奖励)'; alert("🔥 奇迹！连续三月！额外奖励50分！"); }
 
             db[user].total = formatNum(db[user].total + points);
             db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'gong', taskName: taskName, points: points });
@@ -596,7 +628,6 @@
 
         function doTextbook(user) {
             if (hasDoneToday(user, 'textbook')) return;
-
             const chkChinese = document.getElementById('chk-chinese');
             const chkMath = document.getElementById('chk-math');
             const chkEnglish = document.getElementById('chk-english');
@@ -623,8 +654,7 @@
             let taskName = '教材全解(语数英全完成)';
             
             if (count % 7 === 0) {
-                points += 10;
-                taskName += '(连续一周奖励)';
+                points += 10; taskName += '(连续一周奖励)';
                 alert(`🎉 恭喜连续完成${count}天教材全解！额外奖励10分！`);
             }
 
@@ -636,7 +666,6 @@
 
         function doJumpRope(user) {
             if (hasDoneToday(user, 'jumprope')) return;
-
             const inputVal = document.getElementById(`jump-input-${user}`).value;
             const totalJumps = parseInt(inputVal);
 
@@ -659,9 +688,7 @@
                     const diffDays = Math.ceil(Math.abs(today - lastDate) / (1000 * 60 * 60 * 24)); 
                     if (diffDays === 1) { count += 1; pending += extraPoints; } 
                     else if (diffDays > 1) { count = 1; pending = extraPoints; }
-                } else {
-                    count = 1; pending = extraPoints;
-                }
+                } else { count = 1; pending = extraPoints; }
 
                 if (count === 5) {
                     let finalBonus = pending;
@@ -699,6 +726,65 @@
             
             document.getElementById('p-qiao-total').innerText = formatNum(db.chen_qiao.total);
             document.getElementById('p-qiao-week').innerText = getWeekScore('chen_qiao');
+
+            // 渲染待审核列表
+            renderPendingTasks();
+        }
+
+        function renderPendingTasks() {
+            const container = document.getElementById('pending-container');
+            let html = '';
+            let hasPending = false;
+
+            ['chen_he', 'chen_qiao'].forEach(user => {
+                const userName = user === 'chen_he' ? '陈和' : '陈翘';
+                const pendingList = db[user].pendingLogs;
+
+                if (pendingList.length > 0) {
+                    hasPending = true;
+                    html += `<h4 style="margin: 10px 0 5px; color:#555;">${userName} 的待审核：</h4>`;
+                    pendingList.forEach((log, index) => {
+                        html += `
+                        <div class="pending-card">
+                            <div class="pending-info">
+                                ${log.date} ${log.time} - <span>${log.taskName}</span> (+${log.points}分)
+                            </div>
+                            <div class="action-btns">
+                                <button class="btn-success" style="padding: 6px 10px; font-size: 14px;" onclick="approveTask('${user}', ${index})">✅ 通过</button>
+                                <button class="btn-danger" style="padding: 6px 10px; font-size: 14px;" onclick="rejectTask('${user}', ${index})">❌ 驳回</button>
+                            </div>
+                        </div>`;
+                    });
+                }
+            });
+
+            if (!hasPending) {
+                html = `<p style="text-align:center; color:#999; font-size:14px;">暂无待审核任务</p>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function approveTask(user, index) {
+            const log = db[user].pendingLogs[index];
+            // 加分
+            db[user].total = formatNum(db[user].total + log.points);
+            // 写入正式日志
+            db[user].logs.push({ date: log.date, time: log.time, taskId: 'special', taskName: `${log.taskName}(已审核)`, points: log.points });
+            // 从待审核中移除
+            db[user].pendingLogs.splice(index, 1);
+            
+            saveData();
+            renderParentPage();
+            alert("✅ 审核通过，已加分！");
+        }
+
+        function rejectTask(user, index) {
+            if (confirm("确定要驳回该任务吗？驳回后该次加分将作废。")) {
+                db[user].pendingLogs.splice(index, 1);
+                saveData();
+                renderParentPage();
+                alert("❌ 已驳回。");
+            }
         }
 
         function parentDailyScore(user) {
@@ -707,13 +793,7 @@
                 const score = parseInt(scoreStr);
                 if (!isNaN(score) && score >= -5 && score <= 5) {
                     db[user].total = formatNum(db[user].total + score);
-                    db[user].logs.push({ 
-                        date: todayStr, 
-                        time: getTimeStr(),
-                        taskId: 'parent_score', 
-                        taskName: '家长每日评价', 
-                        points: score 
-                    });
+                    db[user].logs.push({ date: todayStr, time: getTimeStr(), taskId: 'parent_score', taskName: '家长每日评价', points: score });
                     saveData();
                     renderParentPage();
                     alert("评分成功！");
@@ -727,16 +807,10 @@
             const inputId = user === 'chen_he' ? 'ex-he-hours' : 'ex-qiao-hours';
             const hours = parseFloat(document.getElementById(inputId).value);
             
-            if (isNaN(hours) || hours <= 0) {
-                alert("请输入有效的兑换小时数。");
-                return;
-            }
+            if (isNaN(hours) || hours <= 0) { alert("请输入有效的兑换小时数。"); return; }
 
             const cost = hours * 100;
-            if (db[user].total < cost) {
-                alert("积分不足，无法兑换！");
-                return;
-            }
+            if (db[user].total < cost) { alert("积分不足，无法兑换！"); return; }
 
             if(confirm(`确认扣除 ${cost} 积分，为${user==='chen_he'?'陈和':'陈翘'}兑换 ${hours} 小时？`)) {
                 db[user].total = formatNum(db[user].total - cost);
@@ -798,10 +872,7 @@
 
         function importData() {
             const dataStr = document.getElementById('backup-data').value.trim();
-            if (!dataStr) {
-                alert("请先在文本框中粘贴备份数据！");
-                return;
-            }
+            if (!dataStr) { alert("请先在文本框中粘贴备份数据！"); return; }
             try {
                 const parsedData = JSON.parse(dataStr);
                 if (parsedData.chen_he && parsedData.chen_qiao) {
@@ -809,6 +880,8 @@
                         db = parsedData;
                         if (!db.chen_he.jumpRope) db.chen_he.jumpRope = { lastDate: "", count: 0, pending: 0 };
                         if (!db.chen_qiao.jumpRope) db.chen_qiao.jumpRope = { lastDate: "", count: 0, pending: 0 };
+                        if (!db.chen_he.pendingLogs) db.chen_he.pendingLogs = [];
+                        if (!db.chen_qiao.pendingLogs) db.chen_qiao.pendingLogs = [];
                         
                         saveData();
                         renderParentPage();

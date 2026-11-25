@@ -57,7 +57,7 @@
         .exchange-area input { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; width: 80px; text-align: center; }
 
         .backup-area { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
-        .backup-area textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+        .backup-area p { font-size: 13px; color: #666; margin-bottom: 15px; line-height: 1.5; }
 
         .pending-card { background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .pending-info { font-size: 15px; color: #333; }
@@ -136,14 +136,18 @@
             <p style="text-align:center; color:#999;">点击上方“看记录”按钮加载明细</p>
         </div>
 
+        <!-- 优化后的文件备份区 -->
         <div class="backup-area">
             <h3>💾 数据备份与恢复</h3>
-            <p style="font-size:12px; color:#666;">建议每周日导出一次数据并保存到微信或备忘录中，防止浏览器清理缓存导致数据丢失。</p>
-            <textarea id="backup-data" placeholder="这里用于粘贴备份数据，或者展示导出的数据..."></textarea>
+            <p>建议每周日导出一次数据文件，并保存在微信或平板的“文件”中，防止浏览器清理缓存导致数据丢失。<br><b>导入会覆盖当前所有数据，请谨慎操作。</b></p>
+            
             <div style="display:flex; gap:10px;">
-                <button class="btn-primary" style="flex:1;" onclick="exportData()">导出数据</button>
-                <button class="btn-success" style="flex:1;" onclick="importData()">导入恢复</button>
+                <button class="btn-primary" style="flex:1;" onclick="exportData()">📥 导出备份文件</button>
+                <button class="btn-success" style="flex:1;" onclick="triggerImport()">📤 选择文件恢复</button>
             </div>
+            
+            <!-- 隐藏的文件选择器 -->
+            <input type="file" id="import-file" accept=".json,.txt" style="display: none;" onchange="handleFileImport(event)">
         </div>
     </div>
 
@@ -179,7 +183,6 @@
             return Number(num.toFixed(1));
         }
 
-        // 将日期转换为 00:00:00 的时间戳，用于纯粹比较天数
         function getDayTimestamp(dateStr) {
             const d = new Date(dateStr.replace(/\//g, '-'));
             return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -252,7 +255,6 @@
                 const now = new Date();
                 const currentHour = now.getHours();
                 
-                // 22:00 后密码校验
                 if (currentHour >= 22 || currentHour < 6) {
                     const pwd = prompt("🛑 已经过了 22:00 啦！\n请放下平板，早点休息。\n如需进入，请输入家长密码：");
                     if (pwd !== "8888") {
@@ -487,7 +489,6 @@
                     </div>
                 </div>`;
 
-            // 【修改点：补习班复习 -> 每日复习】
             const tutorDone = hasDoneToday(user, 'tutor');
             html += `<div class="task-card">
                     <div class="task-info"><div class="task-name">每日复习</div><div class="task-desc">学后及时打卡</div></div>
@@ -856,11 +857,11 @@
             display.innerHTML = html;
         }
 
-        // ================= 数据备份功能 =================
+        // ================= 数据备份与恢复（文件版） =================
+        
+        // 导出：直接下载文件
         function exportData() {
             const dataStr = JSON.stringify(db, null, 2); 
-            document.getElementById('backup-data').value = dataStr;
-            
             const blob = new Blob([dataStr], {type: "application/json"});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -869,18 +870,33 @@
             a.download = `家庭积分备份_${dateStr}.json`;
             a.click();
             URL.revokeObjectURL(url);
-            
-            alert("数据已导出到文本框，并尝试下载文件。建议复制文本框内容保存到微信。");
+            alert("文件已生成并开始下载。请将下载的文件保存到微信或平板“文件”中。");
         }
 
-        function importData() {
-            const dataStr = document.getElementById('backup-data').value.trim();
-            if (!dataStr) { alert("请先在文本框中粘贴备份数据！"); return; }
-            try {
-                const parsedData = JSON.parse(dataStr);
-                if (parsedData.chen_he && parsedData.chen_qiao) {
-                    if(confirm("⚠️ 警告：导入将覆盖当前所有的积分记录，确定要恢复吗？")) {
+        // 触发隐藏的 input[type="file"] 点击
+        function triggerImport() {
+            document.getElementById('import-file').click();
+        }
+
+        // 读取选择的文件并恢复数据
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if(!confirm("⚠️ 警告：导入文件将覆盖当前所有的积分记录，确定要恢复吗？")) {
+                event.target.value = ''; // 清空选择
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const dataStr = e.target.result;
+                    const parsedData = JSON.parse(dataStr);
+                    
+                    if (parsedData.chen_he && parsedData.chen_qiao) {
                         db = parsedData;
+                        // 数据兼容处理
                         if (!db.chen_he.jumpRope) db.chen_he.jumpRope = { lastDate: "", count: 0, pending: 0 };
                         if (!db.chen_qiao.jumpRope) db.chen_qiao.jumpRope = { lastDate: "", count: 0, pending: 0 };
                         if (!db.chen_he.pendingLogs) db.chen_he.pendingLogs = [];
@@ -888,15 +904,17 @@
                         
                         saveData();
                         renderParentPage();
-                        alert("数据恢复成功！");
-                        document.getElementById('backup-data').value = '';
+                        alert("✅ 数据恢复成功！");
+                    } else {
+                        alert("❌ 数据格式不正确，缺少关键信息。请确保选择了正确的备份文件。");
                     }
-                } else {
-                    alert("数据格式不正确，缺少关键信息。");
+                } catch (err) {
+                    alert("❌ 解析失败！文件可能已损坏或不是有效的 JSON 格式。");
+                } finally {
+                    event.target.value = ''; // 恢复完成后清空 input，允许重复选择同一文件
                 }
-            } catch (e) {
-                alert("解析失败！请确保复制了完整的备份代码。");
-            }
+            };
+            reader.readAsText(file);
         }
     </script>
 </body>
